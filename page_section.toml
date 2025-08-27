@@ -4,9 +4,9 @@ name = "Số hóa tài liệu"
 url_path = "home"
 
 [[pages]]
-path = "pages/ocr_detail.py"
+path = "pages/document_detail.py"
 name = "Chi tiết OCR"
-url_path = "ocr_detail"
+url_path = "document_detail"
 
 [[pages]]
 name = " Quản lý"
