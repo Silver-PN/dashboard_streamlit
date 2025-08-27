@@ -28,96 +28,27 @@ def format_currency(amount):
         return str(amount)
     except:
         return str(amount)
-
-st.set_page_config(layout="wide", page_title="Chi tiết OCR")
-
-# Ẩn navigation mặc định
-st.markdown(
-    """
-    <style>
-    /* hide the top-left pages nav that appears when using multipage */
     
-    /* hide the sidebar navigation links (app, document types, ocr detail) */
-    div[data-testid="stSidebarNav"] {display: none !important;}
-    
-    /* hide specific navigation elements */
-
-    .st-emotion-cache-1jv7wse {display: none !important;}
-
-    /* Hide default Streamlit sidebar header */
-    .st-emotion-cache-10p9htt {display: none !important;}
-    
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# Header với logo
-try:
-    import pathlib
-    current_dir = pathlib.Path(__file__).parent
-    logo_path = current_dir.parent / "data" / "logo-toa-an-nhan-dan-toi-cao.png"
-    logo_img = Image.open(logo_path)
-except Exception:
-    logo_img = None
-
-nav_col1, nav_col2 = st.columns([1, 10])
-with nav_col1:
-    if logo_img:
-        st.image(logo_img, width=72)
-with nav_col2:
-    st.markdown("<h2 style='margin:0'>PHẦN MỀM KHO LƯU TRỮ TÀI LIỆU SỐ HÓA</h2>", unsafe_allow_html=True)
-    st.caption("Chi tiết kết quả OCR")
-
-# # --- Sidebar header với logo -------------------------------------------------
-# try:
-#     sidebar_logo_path = current_dir.parent / "data" / "logo-toa-an-nhan-dan-toi-cao.jpg"
-#     sidebar_logo_img = Image.open(sidebar_logo_path)
-#     st.sidebar.image(sidebar_logo_img, width=60)
-# except Exception:
-#     st.sidebar.markdown("### 🏛️")
-
-# st.sidebar.markdown("---")
-
-# Sidebar menu
-st.sidebar.markdown("## Menu")
-with st.sidebar.expander("SỐ HÓA HỒ SƠ TÀI LIỆU", expanded=True):
-    menu_choice = st.radio(
-        "Chọn chức năng",
-        ["Số hóa tài liệu", "Quản lý danh mục trường thông tin", "Quản lý loại văn bản"],
-        index=0,
-        key="menu_choice",
-        label_visibility="collapsed"
-    )
-
-# Xử lý chuyển trang từ menu
-if menu_choice == "Quản lý danh mục trường thông tin":
-    st.switch_page("app.py")
-    st.session_state['menu_choice'] = "Quản lý danh mục trường thông tin"
-elif menu_choice == "Quản lý loại văn bản":
-    st.switch_page("pages/document_types.py")
-
 # Header với nút quay lại
 col_header1, col_header2 = st.columns([6, 1])
 with col_header1:
     st.title("Chi tiết kết quả OCR")
 with col_header2:
     if st.button("← Quay lại", type="secondary"):
-        st.switch_page("app.py")
+        st.switch_page("pages/home.py")
 
 # Lấy dữ liệu từ session state
 selected_id = st.session_state.get('selected_id', None)
 
 if not selected_id:
     st.error("Không có ID nào được cung cấp.")
-    st.page_link("app.py", label="Quay về trang chính")
+    st.page_link("pages/home.py", label="Quay về trang chính")
     st.stop()
 
 # Kiểm tra xem ocr_results có trong session state không
 if 'ocr_results' not in st.session_state or selected_id not in st.session_state['ocr_results']:
     st.error(f"Không tìm thấy dữ liệu cho ID: {selected_id}")
-    st.page_link("app.py", label="Quay về trang chính")
+    st.page_link("pages/home.py", label="Quay về trang chính")
     st.stop()
 
 # Lấy dữ liệu từ session
@@ -212,4 +143,4 @@ with col_action2:
         )
 with col_action3:
     if st.button("🏠 Về trang chính", type="primary"):
-        st.switch_page("app.py")
+        st.switch_page("pages/home.py")

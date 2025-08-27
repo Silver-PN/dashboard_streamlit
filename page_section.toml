@@ -1,0 +1,23 @@
+[[pages]]
+path = "pages/home.py"
+name = "Số hóa tài liệu"
+url_path = "home"
+
+[[pages]]
+path = "pages/ocr_detail.py"
+name = "Chi tiết OCR"
+url_path = "ocr_detail"
+
+[[pages]]
+name = " Quản lý"
+is_section = true
+
+[[pages]]
+path = "pages/information_fields.py"
+name = " Quản lý danh mục trường thông tin"
+url_path = "information_fields"
+
+[[pages]]
+path = "pages/document_types.py"
+name = " Quản lý loại văn bản"
+url_path = "document_types"

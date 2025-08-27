@@ -3,154 +3,14 @@ import pandas as pd
 import os
 from PIL import Image
 
-# Cấu hình trang
-st.set_page_config(layout="wide", page_title="Loại văn bản")
-
-# Ẩn navigation mặc định
-st.markdown(
-    """
-    <style>
-    /* hide the top-left pages nav that appears when using multipage */
-    
-    /* hide the sidebar navigation links (app, document types, ocr detail) */
-    div[data-testid="stSidebarNav"] {display: none !important;}
-    
-    /* hide specific navigation elements */
-
-    .st-emotion-cache-1jv7wse {display: none !important;}
-
-    /* Hide default Streamlit sidebar header */
-    .st-emotion-cache-10p9htt {display: none !important;}
-    
-    /* Thu gọn spacing */
-    .stMarkdown {
-        margin-bottom: 0.25rem !important;
-    }
-    
-    /* Thu gọn spacing giữa các section */
-    .stExpander {
-        margin-bottom: 0.5rem !important;
-    }
-    
-    /* Thu gọn spacing của header */
-    h3, h4 {
-        margin-top: 0.5rem !important;
-        margin-bottom: 0.5rem !important;
-    }
-    
-    /* Thu gọn spacing của divider */
-    hr {
-        margin: 0.5rem 0 !important;
-    }
-    
-    /* Thu gọn input fields */
-    .stTextInput > div > div > input {
-        padding: 0.5rem 0.75rem !important;
-        font-size: 0.875rem !important;
-    }
-    
-    /* Thu gọn button */
-    .stButton > button {
-        padding: 0.5rem 1rem !important;
-        font-size: 0.875rem !important;
-    }
-    
-    /* Breadcrumb styling */
-    .breadcrumb-container {
-        padding: 15px 0;
-        border-bottom: 1px solid #e0e0e0;
-        background-color: #f8f9fa;
-        margin: 20px 0;
-        border-radius: 5px;
-    }
-    
-    .breadcrumb-item {
-        color: #007bff;
-        font-weight: 500;
-        cursor: pointer;
-        transition: color 0.2s ease;
-        margin-left: 10px;
-    }
-    
-    .breadcrumb-item:hover {
-        color: #0056b3;
-        text-decoration: underline;
-    }
-    
-    .breadcrumb-separator {
-        margin: 0 10px;
-        color: #ccc;
-    }
-    
-    .breadcrumb-current {
-        color: #333;
-        font-weight: 500;
-    }
-    
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# Header với logo
+# Đường dẫn file CSV - sử dụng đường dẫn tuyệt đối
 try:
     import pathlib
     current_dir = pathlib.Path(__file__).parent
-    logo_path = current_dir.parent / "data" / "logo-toa-an-nhan-dan-toi-cao.png"
-    logo_img = Image.open(logo_path)
+    csv_file_path = current_dir.parent / "data" / "document_types.csv"
 except Exception:
-    logo_img = None
+    csv_file_path = None
 
-nav_col1, nav_col2 = st.columns([1, 10])
-with nav_col1:
-    if logo_img:
-        st.image(logo_img, width=72)
-with nav_col2:
-    st.markdown("<h2 style='margin:0'>PHẦN MỀM KHO LƯU TRỮ TÀI LIỆU SỐ HÓA</h2>", unsafe_allow_html=True)
-    st.caption("Quản lý loại văn bản")
-
-# Thêm breadcrumb navigation
-st.markdown("""
-<div class="breadcrumb-container">
-    <span class="breadcrumb-item"> Trang chủ</span>
-    <span class="breadcrumb-separator">/</span>
-    <span class="breadcrumb-item">Quản lý danh mục trường thông tin</span>
-    <span class="breadcrumb-separator">/</span>
-    <span class="breadcrumb-current">Loại văn bản</span>
-</div>
-""", unsafe_allow_html=True)
-
-# # --- Sidebar header với logo -------------------------------------------------
-# try:
-#     sidebar_logo_path = current_dir.parent / "data" / "logo-toa-an-nhan-dan-toi-cao.jpg"
-#     sidebar_logo_img = Image.open(sidebar_logo_path)
-#     st.sidebar.image(sidebar_logo_img, width=60)
-# except Exception:
-#     st.sidebar.markdown("### 🏛️")
-
-# st.sidebar.markdown("---")
-
-# Sidebar menu
-st.sidebar.markdown("## Menu")
-with st.sidebar.expander("SỐ HÓA HỒ SƠ TÀI LIỆU", expanded=True):
-    menu_choice = st.radio(
-        "Chọn chức năng",
-        ["Số hóa tài liệu", "Quản lý danh mục trường thông tin", "Quản lý loại văn bản"],
-        index=2,
-        key="menu_choice",
-        label_visibility="collapsed"
-    )
-
-# Xử lý chuyển trang từ menu
-if menu_choice == "Số hóa tài liệu":
-    st.switch_page("app.py")
-elif menu_choice == "Quản lý danh mục trường thông tin":
-    st.switch_page("pages/information_fields.py")
-
-# Đường dẫn file CSV - sử dụng đường dẫn tuyệt đối
-import pathlib
-current_dir = pathlib.Path(__file__).parent
-csv_file_path = current_dir.parent / "data" / "document_types.csv"
 
 # Hàm load dữ liệu từ CSV
 def load_document_types():
@@ -328,4 +188,4 @@ else:
 col1, col2, col3 = st.columns([1, 1, 1])
 with col2:
     if st.button("← Quay về trang chính", type="secondary"):
-        st.switch_page("app.py")
+        st.switch_page("pages/home.py")
