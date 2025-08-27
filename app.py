@@ -35,7 +35,40 @@ def call_ocr_api(pdf_file):
 @st.dialog("Thêm mới hồ sơ", width="small")
 def show_modal():
     st.write("Thêm mới hồ sơ")
-    doc_type = st.selectbox("Chọn loại hồ sơ", ["Biên bản", "Hợp đồng"])
+    
+    # Load document types from CSV
+    def load_document_types():
+        import os
+        csv_path = "data/document_types.csv"
+        if os.path.exists(csv_path):
+            try:
+                df = pd.read_csv(csv_path)
+                return df
+            except:
+                return pd.DataFrame()
+        return pd.DataFrame()
+    
+    # Load document types
+    doc_types_df = load_document_types()
+    
+    if not doc_types_df.empty:
+        # Create options list with format: "ten_loai (ma_loai)"
+        doc_type_options = []
+        doc_type_mapping = {}  # Map display name to ma_loai
+        
+        for _, row in doc_types_df.iterrows():
+            display_name = f"{row['ten_loai']} ({row['ma_loai']})"
+            doc_type_options.append(display_name)
+            doc_type_mapping[display_name] = row['ma_loai']
+        
+        selected_display = st.selectbox("Chọn loại hồ sơ", doc_type_options)
+        doc_type_code = doc_type_mapping.get(selected_display, "")
+        doc_type_name = selected_display.split(" (")[0] if selected_display else ""
+    else:
+        st.warning("Chưa có loại văn bản nào được định nghĩa!")
+        doc_type_code = ""
+        doc_type_name = ""
+        selected_display = ""
 
     uploaded_file = st.file_uploader(
         "Chọn một tệp PDF để trích xuất thông tin", type="pdf"
@@ -47,6 +80,11 @@ def show_modal():
         pdf_file_object.name = uploaded_file.name
 
         if st.button("Bắt đầu trích xuất và Lưu"):
+            # Kiểm tra đã chọn loại văn bản chưa
+            if not doc_type_code:
+                st.error("Vui lòng chọn loại văn bản trước khi upload!")
+                return
+                
             try:
                 # Tạo thư mục data/pdf nếu chưa tồn tại
                 import os
@@ -71,7 +109,7 @@ def show_modal():
                 ocr_result = call_ocr_api(pdf_file_object)
 
                 # Thêm hồ sơ mới vào CSV và session
-                new_stt = add_record(file_name, doc_type, file_path)
+                new_stt = add_record(file_name, doc_type_code, doc_type_name, file_path)
                 
                 # Cập nhật session state
                 st.session_state['data'] = load_records()
@@ -80,12 +118,13 @@ def show_modal():
                 st.session_state['ocr_results'][new_stt] = {
                     "ocr_data": ocr_result,
                     "pdf_bytes": base64.b64encode(pdf_bytes).decode('utf-8'),
-                    "doc_type": doc_type,
+                    "doc_type": doc_type_name,
+                    "doc_type_code": doc_type_code,
                     "file_name": file_name,
                     "file_path": file_path  # Lưu đường dẫn file vật lý
                 }
 
-                st.success(f"Đã thêm hồ sơ mới và xử lý OCR thành công! File đã được lưu tại: {file_path}")
+                st.success(f"Đã thêm hồ sơ mới và xử lý OCR thành công! Loại văn bản: {doc_type_name} (Mã: {doc_type_code}) - File đã được lưu tại: {file_path}")
                 st.rerun()
                 
             except Exception as e:
@@ -271,9 +310,9 @@ def load_records():
         try:
             return pd.read_csv(csv_path)
         except:
-            return pd.DataFrame(columns=["STT", "Tên File", "THỜI GIAN TẢI LÊN", "TRẠNG THÁI DỮ LIỆU", "LOẠI HỒ SƠ"])
+            return pd.DataFrame(columns=["STT", "Tên File", "THỜI GIAN TẢI LÊN", "TRẠNG THÁI DỮ LIỆU", "LOẠI HỒ SƠ", "MA_LOAI"])
     else:
-        return pd.DataFrame(columns=["STT", "Tên File", "THỜI GIAN TẢI LÊN", "TRẠNG THÁI DỮ LIỆU", "LOẠI HỒ SƠ"])
+        return pd.DataFrame(columns=["STT", "Tên File", "THỜI GIAN TẢI LÊN", "TRẠNG THÁI DỮ LIỆU", "LOẠI HỒ SƠ", "MA_LOAI"])
 
 # Hàm lưu danh sách hồ sơ vào CSV
 def save_records(df):
@@ -286,7 +325,7 @@ def save_records(df):
     df.to_csv(csv_path, index=False)
 
 # Hàm thêm hồ sơ mới
-def add_record(file_name, doc_type, file_path):
+def add_record(file_name, doc_type_code, doc_type_name, file_path):
     df = load_records()
     
     # Tạo STT mới
@@ -301,7 +340,8 @@ def add_record(file_name, doc_type, file_path):
         "Tên File": [file_name],
         "THỜI GIAN TẢI LÊN": [time.strftime("%m/%d/%y %H:%M:%S")],
         "TRẠNG THÁI DỮ LIỆU": ["Complete"],
-        "LOẠI HỒ SƠ": [doc_type]
+        "LOẠI HỒ SƠ": [doc_type_name],  # Hiển thị tên cho người dùng
+        "MA_LOAI": [doc_type_code]      # Lưu mã để mapping
     })
     
     df = pd.concat([df, new_row], ignore_index=True)
@@ -382,7 +422,12 @@ if menu_choice == "Số hóa tài liệu":
             with col6:
                 if st.button("View", key=f"view_{row['STT']}", type="secondary"):
                     st.session_state['selected_id'] = row['STT']
-                    st.switch_page("pages/ocr_detail.py")
+                    # Cập nhật URL với ID để hỗ trợ F5 refresh
+                    try:
+                        st.query_params['id'] = str(row['STT'])
+                    except:
+                        pass
+                    st.switch_page("pages/document_detail.py")
             
             if index < len(filtered_data) - 1:  # Không hiển thị divider cho dòng cuối
                 st.divider()

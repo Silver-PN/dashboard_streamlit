@@ -107,7 +107,6 @@ with nav_col1:
         st.image(logo_img, width=72)
 with nav_col2:
     st.markdown("<h2 style='margin:0'>PHẦN MỀM KHO LƯU TRỮ TÀI LIỆU SỐ HÓA</h2>", unsafe_allow_html=True)
-    st.caption("Quản lý loại văn bản")
 
 # Thêm breadcrumb navigation
 st.markdown("""

@@ -123,7 +123,6 @@ with nav_col1:
         st.image(logo_img, width=72)
 with nav_col2:
     st.markdown("<h2 style='margin:0'>PHẦN MỀM KHO LƯU TRỮ TÀI LIỆU SỐ HÓA</h2>", unsafe_allow_html=True)
-    st.caption("Quản lý danh mục trường thông tin")
 
 # Thêm breadcrumb navigation
 st.markdown("""
@@ -175,8 +174,6 @@ def load_information_fields():
                 'loai_van_ban': ['Văn bản hành chính'],
                 'ma_loai_van_ban': ['VBHC2'],
                 'thu_tu': [1],
-                'ten_truong': ['Mã phông'],
-                'ma_truong': ['IDProfileTemp'],
                 'kieu_nhap': ['Danh mục phông']
             })
             default_data.to_csv(csv_file_path, index=False)
@@ -189,8 +186,6 @@ def load_information_fields():
             'loai_van_ban': ['Văn bản hành chính'],
             'ma_loai_van_ban': ['VBHC2'],
             'thu_tu': [1],
-            'ten_truong': ['Mã phông'],
-            'ma_truong': ['IDProfileTemp'],
             'kieu_nhap': ['Danh mục phông']
         })
         default_data.to_csv(csv_file_path, index=False)
@@ -211,7 +206,7 @@ def save_information_fields(df):
     df.to_csv(csv_file_path, index=False)
 
 # Hàm thêm trường thông tin mới
-def add_information_field(ma, ten, loai_van_ban, ma_loai_van_ban, thu_tu, ten_truong, ma_truong, kieu_nhap):
+def add_information_field(ma, ten, loai_van_ban, ma_loai_van_ban, thu_tu, kieu_nhap):
     df = load_information_fields()
     
     # Kiểm tra mã đã tồn tại
@@ -225,8 +220,6 @@ def add_information_field(ma, ten, loai_van_ban, ma_loai_van_ban, thu_tu, ten_tr
         'loai_van_ban': [loai_van_ban],
         'ma_loai_van_ban': [ma_loai_van_ban],
         'thu_tu': [thu_tu],
-        'ten_truong': [ten_truong],
-        'ma_truong': [ma_truong],
         'kieu_nhap': [kieu_nhap]
     })
     df = pd.concat([df, new_row], ignore_index=True)
@@ -297,7 +290,7 @@ with st.expander("Thêm mới danh mục trường thông tin", expanded=False):
     
     if st.button("Thêm mới", type="primary"):
         if ma and ten and loai_van_ban and kieu_nhap:
-            success, message = add_information_field(ma, ten, loai_van_ban, ma_loai_van_ban, thu_tu, "", "", kieu_nhap)
+            success, message = add_information_field(ma, ten, loai_van_ban, ma_loai_van_ban, thu_tu, kieu_nhap)
             if success:
                 st.success(message)
                 st.rerun()
