@@ -1,4 +1,6 @@
 # python 3.10
 streamlit
 requests
-PyMuPDF
+streamlit-pdf-viewer
+pandas
+Pillow
