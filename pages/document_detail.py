@@ -33,12 +33,6 @@ st.markdown(
         margin-bottom: 0.3rem !important;
     }
     
-    .stSelectbox > div > div > div {
-        padding: 0.3rem 0.5rem !important;
-        font-size: 0.8rem !important;
-        margin-bottom: 0.3rem !important;
-    }
-    
     .stNumberInput > div > div > input {
         padding: 0.3rem 0.5rem !important;
         font-size: 0.8rem !important;
@@ -180,8 +174,6 @@ st.markdown(
 try:
     import pathlib
     current_dir = pathlib.Path(__file__).parent
-    logo_path = current_dir.parent / "data" / "logo-toa-an-nhan-dan-toi-cao.png"
-    logo_img = Image.open(logo_path)
 except Exception:
     logo_img = None
 
@@ -348,37 +340,37 @@ def create_input_field(field_info):
 def load_field_positions():
     """Load vị trí các field từ nguồn dữ liệu"""
     # Tọa độ thực tế dựa trên document PDF Vietbank
-    # Tọa độ theo định dạng (x1, y1, x2, y2) - pixel coordinates
+    # Tọa độ theo định dạng {left, top, width, height} - pixel coordinates
     return {
         # Fields cho Văn bản hành chính (VBHC2)
-        "QD": [(0, 100, 200, 260)],           # "Tờ trình" ở góc phải trên
-        "SBAQD": [(850, 350, 1050, 380)],      # Số văn bản ở trung tâm
-        "SBAQDLQ": [(100, 400, 300, 430)],     # Các trường liên quan bên trái
-        "SBAQDHH": [(100, 450, 300, 480)],     # Các trường hiệu lực
-        "QDBALH": [(100, 500, 400, 530)],      # Dropdown cho lý hôn tại
-        "NGAYHH": [(750, 300, 950, 330)],      # Ngày tháng ở bên phải
-        "TRICHYEU": [(100, 550, 600, 650)],    # Nội dung lớn ở giữa
-        "TENCOQUAN": [(700, 260, 1100, 290)],  # Tên cơ quan ở phần header
-        "TENNGUYENDON": [(100, 700, 400, 730)], # Tên nguyên đơn
-        "NAMSINHNGUYENDON": [(450, 700, 550, 730)], # Năm sinh
-        "SOCHUNGMINH": [(600, 700, 800, 730)], # Số CMND
+        "QD": [{"left": 120.1690368652344, "top": 80.88623046875, "width": 150, "height": 50}],          
+        "SBAQD": [{"left": 850, "top": 350, "width": 200, "height": 30}],     
+        "SBAQDLQ": [{"left": 100, "top": 400, "width": 200, "height": 10}],     
+        "SBAQDHH": [{"left": 100, "top": 450, "width": 200, "height": 30}],    
+        "QDBALH": [{"left": 100, "top": 500, "width": 300, "height": 30}],    
+        "NGAYHH": [{"left": 750, "top": 300, "width": 200, "height": 30}],     
+        "TRICHYEU": [{"left": 100, "top": 550, "width": 500, "height": 100}],   
+        "TENCOQUAN": [{"left": 700, "top": 260, "width": 400, "height": 30}],  
+        "TENNGUYENDON": [{"left": 100, "top": 700, "width": 300, "height": 30}], 
+        "NAMSINHNGUYENDON": [{"left": 450, "top": 700, "width": 100, "height": 30}],
+        "SOCHUNGMINH": [{"left": 600, "top": 700, "width": 200, "height": 30}], 
         
         # Fields cho Biên bản (BB)
-        "BB": [(400, 100, 600, 130)],          # Tiêu đề biên bản
-        "TENVIEC": [(100, 200, 500, 230)],     # Tên việc
-        "NGAYLAP": [(600, 200, 800, 230)],     # Ngày lập
-        "NOIDUNG": [(100, 300, 700, 500)],     # Nội dung biên bản
-        "NGUOILAP": [(100, 600, 300, 630)],    # Người lập
-        "NGUOIKY": [(500, 600, 700, 630)],     # Người ký
+        "BB": [{"left": 400, "top": 100, "width": 200, "height": 30}],         
+        "TENVIEC": [{"left": 100, "top": 200, "width": 400, "height": 30}],   
+        "NGAYLAP": [{"left": 600, "top": 200, "width": 200, "height": 30}],     
+        "NOIDUNG": [{"left": 100, "top": 300, "width": 600, "height": 200}],    
+        "NGUOILAP": [{"left": 100, "top": 600, "width": 200, "height": 30}],   
+        "NGUOIKY": [{"left": 500, "top": 600, "width": 200, "height": 30}],   
         
         # Fallback positions for common field types
-        "NGAY": [(750, 300, 950, 330)],        # Ngày tháng chung
-        "SO": [(850, 350, 1050, 380)],         # Số văn bản chung
-        "NOI_DUNG": [(100, 300, 700, 500)],    # Nội dung chung
-        "TEN": [(100, 200, 400, 230)],         # Tên chung
+        "NGAY": [{"left": 750, "top": 300, "width": 200, "height": 30}],        
+        "SO": [{"left": 850, "top": 350, "width": 200, "height": 30}],        
+        "NOI_DUNG": [{"left": 100, "top": 300, "width": 600, "height": 200}],  
+        "TEN": [{"left": 100, "top": 200, "width": 300, "height": 30}],        
         
         # Mapping mặc định
-        "DEFAULT": [(100, 100, 300, 130)]      # Vị trí mặc định góc trên trái
+        "DEFAULT": [{"left": 100, "top": 100, "width": 200, "height": 30}]      # Vị trí mặc định góc trên trái
     }
 
 # Load vị trí các field
@@ -386,7 +378,7 @@ FIELD_POSITIONS = load_field_positions()
 
 # Hàm lấy vị trí field theo mã field và loại văn bản
 def get_field_position(field_code, document_type_code=None):
-    """Lấy vị trí (x1, y1, x2, y2) của field trong PDF"""
+    """Lấy vị trí {left, top, width, height} của field trong PDF"""
     
     # Thử tìm vị trí theo mã field trực tiếp
     if field_code in FIELD_POSITIONS:
@@ -399,7 +391,7 @@ def get_field_position(field_code, document_type_code=None):
             return FIELD_POSITIONS[combined_key]
     
     # Fallback: sử dụng vị trí mặc định
-    return FIELD_POSITIONS.get("DEFAULT", [(100, 100, 300, 130)])
+    return FIELD_POSITIONS.get("DEFAULT", [{"left": 100, "top": 100, "width": 200, "height": 30}])
 
 # Hàm tạo PDF với khung đỏ highlight
 def create_highlighted_pdf(pdf_bytes, field_code, document_type_code=None):
@@ -415,7 +407,17 @@ def create_highlighted_pdf(pdf_bytes, field_code, document_type_code=None):
             # Vẽ khung đỏ cho trang đầu tiên (có thể mở rộng cho nhiều trang)
             page = doc[0]
             for pos in positions:
-                x1, y1, x2, y2 = pos
+                # Chuyển đổi từ định dạng {left, top, width, height} sang (x1, y1, x2, y2)
+                left = pos["left"]
+                top = pos["top"]
+                width = pos["width"]
+                height = pos["height"]
+                
+                x1 = left
+                y1 = top
+                x2 = left + width
+                y2 = top + height
+                
                 rect = fitz.Rect(x1, y1, x2, y2)
                 
                 # Vẽ khung đỏ với độ dày 3px và fill trong suốt
@@ -459,15 +461,70 @@ with col_left:
     st.markdown('<div class="form-container">', unsafe_allow_html=True)
     # Hiển thị các trường thông tin từ information_fields
     if not filtered_fields.empty:
-        st.markdown("**Khung biên mục tài liệu:**")
         
-        # Tạo form với các trường thông tin
+        # Tính toán số lượng trường có thể hiển thị trong 40% màn hình
+        # Giả sử mỗi trường input chiếm khoảng 80px (bao gồm label, input, spacing)
+        # Và 40% màn hình = 0.4 * 1080 = 432px (giả sử màn hình 1080p)
+        max_fields_per_page = 7  # Số trường tối đa hiển thị trên mỗi trang
+        
+        # Lấy tổng số trường
+        total_fields = len(filtered_fields)
+        
+        # Tính số trang cần thiết
+        total_pages = (total_fields + max_fields_per_page - 1) // max_fields_per_page
+        
+        # Lấy trang hiện tại từ session state hoặc mặc định là 1
+        if 'current_page' not in st.session_state:
+            st.session_state.current_page = 1
+        
+        current_page = st.session_state.current_page
+        
+        # Hiển thị thông tin phân trang
+        if total_pages > 1:
+            st.markdown(f"**Trang {current_page}/{total_pages}**")
+            
+            # Nút điều hướng trang với select box ở giữa
+            col_prev, col_select, col_next = st.columns([1, 1, 1])
+            
+            with col_prev:
+                if st.button("← Trước", key="prev_page", disabled=(current_page <= 1)):
+                    st.session_state.current_page = current_page - 1
+                    st.rerun()
+            
+            with col_select:
+                # Tạo danh sách các trang để select
+                page_options = list(range(1, total_pages + 1))
+                selected_page = st.selectbox(
+                    "Chọn trang:",
+                    options=page_options,
+                    index=current_page - 1,  # index bắt đầu từ 0
+                    key="page_selector",
+                    label_visibility="collapsed"
+                )
+                
+                # Xử lý khi người dùng chọn trang khác
+                if selected_page != current_page:
+                    st.session_state.current_page = selected_page
+                    st.rerun()
+            
+            with col_next:
+                if st.button("Sau →", key="next_page", disabled=(current_page >= total_pages)):
+                    st.session_state.current_page = current_page + 1
+                    st.rerun()
+            
+            st.markdown("---")
+        
+        # Tính toán trường bắt đầu và kết thúc cho trang hiện tại
+        start_idx = (current_page - 1) * max_fields_per_page
+        end_idx = min(start_idx + max_fields_per_page, total_fields)
+        
+        # Lấy các trường cho trang hiện tại
+        current_page_fields = filtered_fields.iloc[start_idx:end_idx]
+        
+        # Tạo form với các trường thông tin của trang hiện tại
         form_data = {}
         
-        # Hiển thị thông tin về số lượng trường (ẩn thông báo màu xanh)
-        # st.info(f"📋 Hiển thị {len(filtered_fields)} trường thông tin cho loại văn bản '{document_type}'")
-        
-        for _, field in filtered_fields.iterrows():
+        for _, field in current_page_fields.iterrows():
             # Tạo container với hover effect
             field_container = st.container()
             
@@ -542,55 +599,7 @@ with col_left:
                 
                 # Lưu giá trị vào form_data
                 form_data[field['ma']] = input_value
-        
-        st.markdown("---")
-        
-        # Nút điều khiển
-        col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
-        
-        with col_btn1:
-            if st.button("← Thoát", type="secondary"):
-                # Xóa query params khi thoát
-                try:
-                    st.query_params.clear()
-                except:
-                    pass
-                # Xóa session state
-                if 'selected_id' in st.session_state:
-                    del st.session_state['selected_id']
-                st.switch_page("app.py")
-        
-        with col_btn2:
-            if st.button("← Trước", type="primary"):
-                # Logic chuyển đến record trước đó
-                prev_id = document_id - 1
-                if prev_id >= 1:
-                    st.session_state['selected_id'] = prev_id
-                    # Cập nhật URL
-                    try:
-                        st.query_params['id'] = str(prev_id)
-                    except:
-                        pass
-                    st.rerun()
-                else:
-                    st.warning("Đây là record đầu tiên!")
-        
-        with col_btn3:
-            if st.button("Sau →", type="primary"):
-                # Logic chuyển đến record tiếp theo
-                next_id = document_id + 1
-                max_id = records_df['STT'].max() if not records_df.empty else 0
-                if next_id <= max_id:
-                    st.session_state['selected_id'] = next_id
-                    # Cập nhật URL
-                    try:
-                        st.query_params['id'] = str(next_id)
-                    except:
-                        pass
-                    st.rerun()
-                else:
-                    st.warning("Đây là record cuối cùng!")
-        
+      
     else:
         st.warning("Không tìm thấy trường thông tin nào cho loại văn bản này!")
         if st.button("← Quay về trang chính"):
@@ -602,6 +611,8 @@ with col_left:
             # Xóa session state
             if 'selected_id' in st.session_state:
                 del st.session_state['selected_id']
+            if 'current_page' in st.session_state:
+                del st.session_state['current_page']
             st.switch_page("app.py")
     
     st.markdown('</div>', unsafe_allow_html=True)
@@ -747,4 +758,4 @@ with col2:
         # Xóa session state
         if 'selected_id' in st.session_state:
             del st.session_state['selected_id']
-        st.switch_page("app.py")
+        st.switch_page("pages/home.py")

@@ -109,18 +109,7 @@ st.markdown(
 )
 
 # --- Navbar with logo -------------------------------------------------
-try:
-    logo_path = "data/logo-toa-an-nhan-dan-toi-cao.png"
-    logo_img = Image.open(logo_path)
-except Exception:
-    logo_img = None
-
-nav_col1, nav_col2 = st.columns([1, 10])
-with nav_col1:
-    if logo_img:
-        st.image(logo_img, width=72)
-with nav_col2:
-    st.markdown("<h2 style='margin:0'>PHẦN MỀM KHO LƯU TRỮ TÀI LIỆU SỐ HÓA</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='margin:0'>DEMO SỐ HÓA TÀI LIỆU</h2>", unsafe_allow_html=True)
 
 # Thêm breadcrumb navigation
 def get_page_mapping(toml_path: str = "page_section.toml") -> tuple[dict[str, str], str]:
