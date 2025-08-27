@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import os
-from PIL import Image
 
 # Đường dẫn file CSV - sử dụng đường dẫn tuyệt đối
 try:
