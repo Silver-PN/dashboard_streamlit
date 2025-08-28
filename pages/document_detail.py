@@ -12,6 +12,21 @@ import pathlib
 # Cấu hình trang
 st.set_page_config(layout="wide", page_title="Thông tin tài liệu")
 
+
+def safe_rerun():
+    """Safe rerun helper for Streamlit pages: use experimental_rerun if available, else stop."""
+    try:
+        if hasattr(st, 'experimental_rerun'):
+            st.experimental_rerun()
+            return
+        try:
+            from streamlit.runtime.scriptrunner import RerunException
+            raise RerunException
+        except Exception:
+            st.stop()
+    except Exception:
+        st.stop()
+
 # Ẩn navigation mặc định
 st.markdown(
     """
@@ -1124,7 +1139,7 @@ with col_left:
                                 del st.session_state[k]
                             except Exception:
                                 pass
-                    st.experimental_rerun()
+                    safe_rerun()
       
     else:
         st.warning("Không tìm thấy trường thông tin nào cho loại văn bản này!")

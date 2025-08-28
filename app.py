@@ -697,16 +697,84 @@ if st.session_state.get('main_menu', 'Số hóa tài liệu') == "Số hóa tài
     # Load dữ liệu từ CSV mỗi lần
     records_df = load_records()
 
-    # notifications feature removed
-    
-    # Filter data based on search query
+    # --- Filters and pagination controls ---------------------------------
+    # Load document types for filter options
+    doc_type_options = ["Tất cả"]
+    try:
+        dt_path = os.path.join('data', 'document_types.csv')
+        if os.path.exists(dt_path):
+            dt_df = pd.read_csv(dt_path)
+            if 'ten_loai' in dt_df.columns:
+                opts = dt_df['ten_loai'].astype(str).tolist()
+                # keep unique while preserving order
+                seen = set()
+                for v in opts:
+                    if v not in seen:
+                        seen.add(v)
+                        doc_type_options.append(v)
+    except Exception:
+        pass
+    fcol1, fcol2, fcol3, fcol4 = st.columns([3, 2, 2, 1.2])
+    with fcol1:
+        sort_order = st.selectbox("Sắp xếp theo ngày", ["D - Mới → Cũ", "A - Cũ → Mới"], index=0, key='sort_order')
+    with fcol2:
+        doc_type_filter = st.selectbox("Lọc loại văn bản", doc_type_options, index=0, key='filter_doc_type')
+    with fcol3:
+        # status filter options from records
+        status_opts = ["Tất cả"]
+        try:
+            if 'TRẠNG THÁI DỮ LIỆU' in records_df.columns:
+                for s in records_df['TRẠNG THÁI DỮ LIỆU'].astype(str).unique():
+                    if s not in status_opts:
+                        status_opts.append(s)
+        except Exception:
+            pass
+        status_filter = st.selectbox("Lọc trạng thái OCR", status_opts, index=0, key='filter_status')
+    with fcol4:
+        page_size = st.selectbox("Số hàng / trang", [10, 20, 50, 100], index=3, key='page_size')
+
+    # Reset page when filters change
+    prev_key = 'prev_filters'
+    current_filters = (sort_order, doc_type_filter, status_filter, page_size)
+    if st.session_state.get(prev_key) != current_filters:
+        st.session_state['page'] = 1
+        st.session_state[prev_key] = current_filters
+
+    # Filter data based on search query and selected doc type/status
     filtered_data = records_df
     if search_query:
-        filtered_data = records_df[
-            records_df.apply(
+        filtered_data = filtered_data[
+            filtered_data.apply(
                 lambda row: search_query.lower() in str(row).lower(), axis=1
             )
         ]
+
+    if doc_type_filter and doc_type_filter != "Tất cả":
+        filtered_data = filtered_data[filtered_data['LOẠI HỒ SƠ'] == doc_type_filter]
+
+    if status_filter and status_filter != "Tất cả":
+        filtered_data = filtered_data[filtered_data['TRẠNG THÁI DỮ LIỆU'] == status_filter]
+
+    # Ensure timestamp column parsed for sorting
+    if 'THỜI GIAN TẢI LÊN' in filtered_data.columns:
+        filtered_data = filtered_data.copy()
+        filtered_data['__ts'] = pd.to_datetime(filtered_data['THỜI GIAN TẢI LÊN'], format="%m/%d/%y %H:%M:%S", errors='coerce')
+        ascending = True if sort_order.startswith('A') else False
+        filtered_data = filtered_data.sort_values('__ts', ascending=ascending)
+        # remove helper column later
+
+    # Pagination
+    total_rows = len(filtered_data)
+    page = int(st.session_state.get('page', 1))
+    page_size = int(page_size)
+    total_pages = max(1, (total_rows + page_size - 1) // page_size)
+    if page > total_pages:
+        page = total_pages
+        st.session_state['page'] = page
+
+    start = (page - 1) * page_size
+    end = start + page_size
+    page_data = filtered_data.iloc[start:end]
 
     # Display table
     st.markdown("<h3>Danh sách hồ sơ</h3>", unsafe_allow_html=True)
@@ -728,9 +796,9 @@ if st.session_state.get('main_menu', 'Số hóa tài liệu') == "Số hóa tài
 
     st.markdown("---")
 
-    # Table data
-    if not filtered_data.empty:
-        for index, row in filtered_data.iterrows():
+    # Table data (paginated)
+    if not page_data.empty:
+        for index, row in page_data.iterrows():
             col1, col2, col3, col4, col5, col6 = st.columns([0.5, 2.5, 1, 2, 1.5, 1])
             with col1:
                 st.write(f"**{row['STT']}**")
@@ -763,11 +831,26 @@ if st.session_state.get('main_menu', 'Số hóa tài liệu') == "Số hóa tài
             if index < len(filtered_data) - 1:  # Không hiển thị divider cho dòng cuối
                 st.divider()
         
-        # Hiển thị thông tin số lượng kết quả
-        if search_query:
-            st.info(f"Tìm thấy {len(filtered_data)} kết quả cho từ khóa: '{search_query}'")
-        else:
-            st.info(f"Hiển thị tất cả {len(filtered_data)} hồ sơ")
+        # Pagination controls and info
+        colp1, colp2, colp3 = st.columns([1, 1, 6])
+        with colp1:
+            # Show Prev only when not on first page
+            if page > 1:
+                if st.button("⟵ Prev", key=f"prev_{page}"):
+                    st.session_state['page'] = max(1, page - 1)
+                    safe_rerun()
+            else:
+                st.write("")
+        with colp2:
+            # Show Next only when not on last page
+            if page < total_pages:
+                if st.button("Next ⟶", key=f"next_{page}"):
+                    st.session_state['page'] = min(total_pages, page + 1)
+                    safe_rerun()
+            else:
+                st.write("")
+        with colp3:
+            st.markdown(f"Page {page} / {total_pages} — {total_rows} rows")
     else:
         if search_query:
             st.warning(f"Không tìm thấy kết quả nào cho từ khóa: '{search_query}'")
