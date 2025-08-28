@@ -150,8 +150,29 @@ st.markdown(
     .st-emotion-cache-1jv7wse {display: none !important;}
 
     /* Hide default Streamlit sidebar header */
-    .st-emotion-cache-10p9htt {display: none !important;}
+    # .st-emotion-cache-10p9htt {display: none !important;}
+    /* Ensure this element layers above others */
+    .st-emotion-cache-10p9htt {
+        position: relative;
+        z-index: 9999;
+    }
+      div[data-testid="stSidebarHeader"] {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 10000 !important;
+        background: transparent !important;
+        pointer-events: none !important;
+    }
     
+    /* Cho phép click vào collapse button */
+    div[data-testid="stSidebarCollapseButton"] {
+        pointer-events: auto !important;
+    }
+    .st-emotion-cache-1echtaq {padding-top: 0 !important; }
+
+    .st-emotion-cache-wfksaw {justify-content: end !important;}
     /* Thu gọn spacing */
     .stMarkdown {
         margin-bottom: 0.25rem !important;
@@ -264,31 +285,57 @@ st.markdown("""
 # --- Sidebar hierarchical menu (custom, at top, no page nav) ---------
 st.sidebar.markdown("## Menu")
 with st.sidebar.expander("SỐ HÓA HỒ SƠ TÀI LIỆU", expanded=True):
-    # Kiểm tra session state để chọn menu item đúng
-    default_index = 0
+    # Backward-compat: chuyển các key/giá trị cũ sang schema & tên mới
     if 'menu_choice' in st.session_state:
-        if st.session_state['menu_choice'] == "Quản lý danh mục trường thông tin":
-            default_index = 1
-        elif st.session_state['menu_choice'] == "Quản lý loại văn bản":
-            default_index = 2
-    
-    menu_choice = st.radio(
-        "Chọn chức năng",
-        ["Số hóa tài liệu", "Quản lý danh mục trường thông tin", "Quản lý loại văn bản"],
-        index=default_index,
-        key="menu_choice",
-        label_visibility="collapsed"
-    )
-    
-    # Reset session state sau khi đã sử dụng
-    if 'menu_choice' in st.session_state:
+        legacy = st.session_state['menu_choice']
+        if legacy in ("Quản lý danh mục trường thông tin", "Quản lý loại văn bản"):
+            st.session_state['main_menu'] = "Quản lý danh mục trường thông tin"
+            # map tên cũ -> mới cho submenu
+            st.session_state['manage_choice'] = (
+                "Danh mục trường thông tin" if legacy == "Quản lý danh mục trường thông tin" else "Loại văn bản"
+            )
+        else:
+            st.session_state['main_menu'] = "Số hóa tài liệu"
         del st.session_state['menu_choice']
 
-# Xử lý chuyển trang từ menu
-if menu_choice == "Quản lý danh mục trường thông tin":
-    st.switch_page("pages/information_fields.py")
-elif menu_choice == "Quản lý loại văn bản":
-    st.switch_page("pages/document_types.py")
+    # Nếu còn lưu giá trị cũ trong main_menu / manage_choice thì migrate
+    if st.session_state.get('main_menu') == 'Quản lý':
+        st.session_state['main_menu'] = 'Quản lý danh mục trường thông tin'
+    if st.session_state.get('manage_choice') == 'Quản lý danh mục trường thông tin':
+        st.session_state['manage_choice'] = 'Danh mục trường thông tin'
+    if st.session_state.get('manage_choice') == 'Quản lý loại văn bản':
+        st.session_state['manage_choice'] = 'Loại văn bản'
+
+    # Main level
+    main_default = 0 if st.session_state.get('main_menu', 'Số hóa tài liệu') == 'Số hóa tài liệu' else 1
+    main_menu = st.radio(
+        "Chọn chức năng",
+        ["Số hóa tài liệu", "Quản lý danh mục trường thông tin"],
+        index=main_default,
+        key="main_menu",
+        label_visibility="collapsed",
+    )
+
+    # Sub level for Quản lý (đổi nhãn và item)
+    manage_choice = None
+    if main_menu == "Quản lý danh mục trường thông tin":
+        manage_default = 0 if st.session_state.get('manage_choice', 'Danh mục trường thông tin') == 'Danh mục trường thông tin' else 1
+        # nhãn phụ để tạo cảm giác phân cấp
+        st.markdown("<div style='margin: 4px 0 6px 6px; color:#6c757d;'>— Quản lý danh mục trường thông tin</div>", unsafe_allow_html=True)
+        manage_choice = st.radio(
+            "Quản lý danh mục trường thông tin",
+            ["Danh mục trường thông tin", "Loại văn bản"],
+            index=manage_default,
+            key="manage_choice",
+            label_visibility="collapsed",
+        )
+
+# Xử lý chuyển trang từ menu mới
+if st.session_state.get('main_menu') == "Quản lý danh mục trường thông tin":
+    if st.session_state.get('manage_choice') == "Danh mục trường thông tin":
+        st.switch_page("pages/information_fields.py")
+    elif st.session_state.get('manage_choice') == "Loại văn bản":
+        st.switch_page("pages/document_types.py")
 
 
 # Hàm load danh sách hồ sơ từ CSV
@@ -346,14 +393,13 @@ if 'ocr_results' not in st.session_state:
     st.session_state['ocr_results'] = {}
 
 
-# Main content switches based on menu selection
-if menu_choice == "Số hóa tài liệu":
+# Main content chỉ hiển thị khi ở mục "Số hóa tài liệu"
+if st.session_state.get('main_menu', 'Số hóa tài liệu') == "Số hóa tài liệu":
     # Upload section
-    col_u1, col_u2, col_u3 = st.columns([6, 2, 2])
+    col_u1, col_u3 = st.columns([8, 2])
     with col_u1:
         search_query = st.text_input("Nhập số ID, BGD, tên tài liệu, hoặc tên việc", placeholder="Tìm kiếm...")
-    with col_u2:
-        st.write("")  # Spacer
+
     with col_u3:
         if st.button("Upload", type="primary"):
             show_modal()
@@ -432,31 +478,4 @@ if menu_choice == "Số hóa tài liệu":
         else:
             st.info("Chưa có hồ sơ nào. Hãy upload file đầu tiên!")
 
-elif menu_choice == "Quản lý danh mục trường thông tin":
-    st.switch_page("pages/information_fields.py")
-
-elif menu_choice == "Quản lý loại văn bản":
-    st.markdown("<h3>Quản lý loại văn bản</h3>", unsafe_allow_html=True)
-    
-    # Hiển thị thông tin và nút chuyển trang
-    st.info("Chức năng quản lý loại văn bản cho phép bạn thêm, sửa, xóa các loại văn bản trong hệ thống.")
-    
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        if st.button("Mở trang quản lý loại văn bản", type="primary"):
-            st.switch_page("pages/document_types.py")
-    
-    # Hiển thị danh sách loại văn bản hiện tại từ CSV
-    try:
-        import os
-        csv_path = "data/document_types.csv"
-        if os.path.exists(csv_path):
-            doc_types_df = pd.read_csv(csv_path)
-            st.markdown("<h4>Danh sách loại văn bản hiện tại</h4>", unsafe_allow_html=True)
-            
-            # Hiển thị bảng
-            st.dataframe(doc_types_df, use_container_width=True, hide_index=True)
-        else:
-            st.warning("Chưa có dữ liệu loại văn bản. Hãy tạo dữ liệu đầu tiên!")
-    except Exception as e:
-        st.error(f"Lỗi khi đọc dữ liệu: {str(e)}")
+    # (Khi chọn Quản lý, trang sẽ chuyển sang các trang con tương ứng.)

@@ -23,7 +23,27 @@ st.markdown(
     .st-emotion-cache-1jv7wse {display: none !important;}
 
     /* Hide default Streamlit sidebar header */
-    .st-emotion-cache-10p9htt {display: none !important;}
+    # .st-emotion-cache-10p9htt {display: none !important;}
+    /* Ensure this element layers above others */
+    .st-emotion-cache-10p9htt {
+        position: relative;
+        z-index: 9999;
+    }
+      div[data-testid="stSidebarHeader"] {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 10000 !important;
+        background: transparent !important;
+        pointer-events: none !important;
+    }
+    
+    /* Cho phép click vào collapse button */
+    div[data-testid="stSidebarCollapseButton"] {
+        pointer-events: auto !important;
+    }
+    .st-emotion-cache-1echtaq {padding-top: 0 !important; }
     
     
     
@@ -201,22 +221,80 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Sidebar menu
+# Sidebar menu (2 cấp, đồng bộ với các trang khác)
 st.sidebar.markdown("## Menu")
 with st.sidebar.expander("SỐ HÓA HỒ SƠ TÀI LIỆU", expanded=True):
-    menu_choice = st.radio(
+    # Hỗ trợ tương thích ngược các key cũ
+    if 'menu_choice' in st.session_state:
+        legacy = st.session_state['menu_choice']
+        if legacy in ("Quản lý danh mục trường thông tin", "Quản lý loại văn bản"):
+            st.session_state['main_menu'] = "Quản lý danh mục trường thông tin"
+            st.session_state['manage_choice'] = (
+                "Danh mục trường thông tin" if legacy == "Quản lý danh mục trường thông tin" else "Loại văn bản"
+            )
+        else:
+            st.session_state['main_menu'] = "Số hóa tài liệu"
+        del st.session_state['menu_choice']
+
+    # Migrate giá trị cũ
+    if st.session_state.get('main_menu') == 'Quản lý':
+        st.session_state['main_menu'] = 'Quản lý danh mục trường thông tin'
+    if st.session_state.get('manage_choice') == 'Quản lý danh mục trường thông tin':
+        st.session_state['manage_choice'] = 'Danh mục trường thông tin'
+    if st.session_state.get('manage_choice') == 'Quản lý loại văn bản':
+        st.session_state['manage_choice'] = 'Loại văn bản'
+
+    # Cấp 1
+    main_default = 0 if st.session_state.get('main_menu', 'Số hóa tài liệu') == 'Số hóa tài liệu' else 1
+    main_menu = st.radio(
         "Chọn chức năng",
-        ["Số hóa tài liệu", "Quản lý danh mục trường thông tin", "Quản lý loại văn bản"],
-        index=0,
-        key="menu_choice",
-        label_visibility="collapsed"
+        ["Số hóa tài liệu", "Quản lý danh mục trường thông tin"],
+        index=main_default,
+        key="main_menu",
+        label_visibility="collapsed",
     )
 
-# Xử lý chuyển trang từ menu
-if menu_choice == "Quản lý danh mục trường thông tin":
-    st.switch_page("pages/information_fields.py")
-elif menu_choice == "Quản lý loại văn bản":
-    st.switch_page("pages/document_types.py")
+    # Submenu cho "Số hóa tài liệu" trên trang chi tiết
+    if main_menu == "Số hóa tài liệu":
+        st.markdown("<div style='margin: 4px 0 6px 6px; color:#6c757d;'>— Số hóa tài liệu</div>", unsafe_allow_html=True)
+        digitize_choice = st.radio(
+            "Số hóa tài liệu",
+            ["Danh sách hồ sơ", "Chi tiết hồ sơ"],
+            index=1,  # đang ở trang chi tiết
+            key="digitize_choice",
+            label_visibility="collapsed",
+        )
+        if digitize_choice == "Danh sách hồ sơ":
+            # quay về trang danh sách và dọn state
+            try:
+                st.query_params.clear()
+            except:
+                pass
+            if 'selected_id' in st.session_state:
+                del st.session_state['selected_id']
+            if 'current_page' in st.session_state:
+                del st.session_state['current_page']
+            st.switch_page("app.py")
+
+    # Cấp 2 cho quản lý
+    manage_choice = None
+    if main_menu == "Quản lý danh mục trường thông tin":
+        st.markdown("<div style='margin: 4px 0 6px 6px; color:#6c757d;'>— Quản lý danh mục trường thông tin</div>", unsafe_allow_html=True)
+        manage_default = 0 if st.session_state.get('manage_choice', 'Danh mục trường thông tin') == 'Danh mục trường thông tin' else 1
+        manage_choice = st.radio(
+            "Quản lý danh mục trường thông tin",
+            ["Danh mục trường thông tin", "Loại văn bản"],
+            index=manage_default,
+            key="manage_choice",
+            label_visibility="collapsed",
+        )
+
+    # Điều hướng khi ở mục quản lý
+    if st.session_state.get('main_menu') == "Quản lý danh mục trường thông tin":
+        if st.session_state.get('manage_choice') == "Danh mục trường thông tin":
+            st.switch_page("pages/information_fields.py")
+        elif st.session_state.get('manage_choice') == "Loại văn bản":
+            st.switch_page("pages/document_types.py")
 
 # Lấy ID từ session state hoặc query params
 document_id = None

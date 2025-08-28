@@ -19,7 +19,27 @@ st.markdown(
     .st-emotion-cache-1jv7wse {display: none !important;}
 
     /* Hide default Streamlit sidebar header */
-    .st-emotion-cache-10p9htt {display: none !important;}
+    # .st-emotion-cache-10p9htt {display: none !important;}
+    /* Ensure this element layers above others */
+    .st-emotion-cache-10p9htt {
+        position: relative;
+        z-index: 9999;
+    }
+      div[data-testid="stSidebarHeader"] {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 10000 !important;
+        background: transparent !important;
+        pointer-events: none !important;
+    }
+    
+    /* Cho phép click vào collapse button */
+    div[data-testid="stSidebarCollapseButton"] {
+        pointer-events: auto !important;
+    }
+    .st-emotion-cache-1echtaq {padding-top: 0 !important; }
     
     /* Thu gọn spacing */
     .stMarkdown {
@@ -118,19 +138,31 @@ st.markdown("""
 # Sidebar menu
 st.sidebar.markdown("## Menu")
 with st.sidebar.expander("SỐ HÓA HỒ SƠ TÀI LIỆU", expanded=True):
-    menu_choice = st.radio(
+    main_default = 1  # đang ở khu vực quản lý
+    main_menu = st.radio(
         "Chọn chức năng",
-        ["Số hóa tài liệu", "Quản lý danh mục trường thông tin", "Quản lý loại văn bản"],
-        index=2,
-        key="menu_choice",
-        label_visibility="collapsed"
+        ["Số hóa tài liệu", "Quản lý danh mục trường thông tin"],
+        index=main_default,
+        key="main_menu",
+        label_visibility="collapsed",
     )
 
-# Xử lý chuyển trang từ menu
-if menu_choice == "Số hóa tài liệu":
-    st.switch_page("app.py")
-elif menu_choice == "Quản lý danh mục trường thông tin":
-    st.switch_page("pages/information_fields.py")
+    if main_menu == "Số hóa tài liệu":
+        st.switch_page("app.py")
+
+    # Submenu Quản lý (đổi nhãn và item)
+    st.markdown("<div style='margin: 4px 0 6px 6px; color:#6c757d;'>— Quản lý danh mục trường thông tin</div>", unsafe_allow_html=True)
+    manage_default = 1  # trang hiện tại là "Loại văn bản"
+    manage_choice = st.radio(
+        "Quản lý danh mục trường thông tin",
+        ["Danh mục trường thông tin", "Loại văn bản"],
+        index=manage_default,
+        key="manage_choice",
+        label_visibility="collapsed",
+    )
+
+    if manage_choice == "Danh mục trường thông tin":
+        st.switch_page("pages/information_fields.py")
 
 # Đường dẫn file CSV - sử dụng đường dẫn tuyệt đối
 import pathlib
