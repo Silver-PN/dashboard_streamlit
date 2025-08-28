@@ -1,36 +1,216 @@
 import streamlit as st
 import pandas as pd
 import time
+import threading
+import traceback
 from io import BytesIO
 import base64
 from PIL import Image
+import requests
+import json
+import os
 
-def call_ocr_api(pdf_file):
-    """Hàm giả lập gọi API OCR"""
-    time.sleep(3)
-    mock_response = {
-        "status": "success",
-        "data": {
-            "invoice_id": "INV-2023-123",
-            "customer_name": "Công ty TNHH ABC",
-            "address": "123 Đường XYZ, Quận 1, TP. HCM",
-            "total_amount": "15.000.000 VND",
-            "items": [
-                {
-                    "description": "Sản phẩm A",
-                    "quantity": 2,
-                    "price": "5.000.000 VND",
-                },
-                {
-                    "description": "Sản phẩm B",
-                    "quantity": 1,
-                    "price": "5.000.000 VND",
-                },
-            ],
-        },
-        "processing_time": "2.5s",
+def load_information_fields():
+    """Load danh sách trường thông tin từ CSV"""
+    csv_path = "data/information_fields.csv"
+    if os.path.exists(csv_path):
+        try:
+            return pd.read_csv(csv_path)
+        except:
+            return pd.DataFrame()
+    return pd.DataFrame()
+
+def create_schema_from_fields(doc_type_code, doc_type_name=None):
+    """Tạo schema JSON từ information_fields dựa trên loại văn bản
+    If doc_type_name is supplied, it's used as the schema title.
+    """
+    fields_df = load_information_fields()
+    
+    if fields_df.empty:
+        return {}
+    
+    # Lọc các trường theo loại văn bản
+    filtered_fields = fields_df[fields_df['ma_loai_van_ban'] == doc_type_code]
+    
+    title = doc_type_name if doc_type_name else "Vietnamese Legal Document"
+    schema = {
+        "title": title,
+        "type": "object",
+        "properties": {}
     }
-    return mock_response
+    
+    for _, field in filtered_fields.iterrows():
+        field_name = field['ma']
+        field_description = field['ten']
+        
+        schema["properties"][field_name] = {
+            "type": "string",
+            "description": field_description
+        }
+    
+    return schema
+
+
+def safe_rerun():
+    """Call Streamlit rerun if available, otherwise stop the script to allow refresh.
+    This avoids AttributeError on Streamlit versions that don't expose experimental_rerun.
+    """
+    try:
+        # Preferred (older/newer Streamlit may have this exposed)
+        if hasattr(st, 'experimental_rerun'):
+            st.experimental_rerun()
+            return
+        # Newer Streamlit may provide runtime script runner (best-effort)
+        try:
+            from streamlit.runtime.scriptrunner import RerunException
+            raise RerunException
+        except Exception:
+            # Fallback: stop current execution; user can refresh manually
+            st.stop()
+    except Exception:
+        # Final fallback
+        st.stop()
+
+def call_ocr_api(pdf_file, doc_type_code, doc_type_name=None):
+    """Gọi API OCR thật
+    doc_type_name (optional) will be used as schema title when provided.
+    """
+    try:
+        # Tạo schema từ information fields
+        schema = create_schema_from_fields(doc_type_code, doc_type_name)
+        
+        if not schema.get('properties'):
+            st.warning(f"Không tìm thấy trường thông tin cho loại văn bản: {doc_type_code}")
+            return {"status": "error", "message": "Không có schema"}
+        
+        # Chuẩn bị file và payload
+        files = {
+            'file': (pdf_file.name, pdf_file.getvalue(), 'application/pdf')
+        }
+        
+        data = {
+            'schema': json.dumps(schema),
+            'strategy': 'vision_llm',
+            'use_embedding': 'true'
+        }
+        
+        # Gọi API
+        response = requests.post(
+            'http://192.168.1.28:1111/api/extract',
+            files=files,
+            data=data
+        )
+        
+        if response.status_code == 200:
+            return {
+                "status": "success",
+                "data": response.json(),
+                "processing_time": "API call completed"
+            }
+        else:
+            return {
+                "status": "error",
+                "message": f"API returned status code: {response.status_code}",
+                "data": response.text
+            }
+            
+    except requests.exceptions.ConnectionError:
+        return {
+            "status": "error",
+            "message": "Cannot connect to API server at 192.168.1.28:1111"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"API call failed: {str(e)}"
+        }
+
+
+# Background worker control
+BACKGROUND_WORKER_LOCK = threading.Lock()
+BACKGROUND_WORKER_RUNNING = False
+
+
+def background_worker_loop(poll_interval=1.0):
+    """Background worker that processes records with status 'Pending' sequentially.
+    It reads `data/records.csv`, finds the oldest Pending record, marks it Processing,
+    calls the OCR API, saves API data and updates the record status.
+    """
+    global BACKGROUND_WORKER_RUNNING
+    try:
+        while True:
+            # Load records and find the first pending
+            records_df = load_records()
+            pending = records_df[records_df['TRẠNG THÁI DỮ LIỆU'] == 'Pending']
+            if pending.empty:
+                break
+
+            # Process the oldest pending (smallest STT)
+            pending = pending.sort_values('STT')
+            row = pending.iloc[0]
+            stt = int(row['STT'])
+            file_name = row['Tên File']
+            doc_type_code = row.get('MA_LOAI', '')
+            doc_type_name = row.get('LOẠI HỒ SƠ', '')
+            file_path = row.get('MA_LOAI')
+
+            # Determine file path from records (prefer explicit file path in data/pdf)
+            pdf_path = os.path.join('data', 'pdf', file_name)
+            if not os.path.exists(pdf_path):
+                # try stored path in session or alternate
+                # if file missing, mark as Error
+                update_record_status(stt, 'Error')
+                add_api_data(stt, {"status": "error", "message": f"File not found: {pdf_path}"})
+                continue
+
+            # Mark as Processing
+            update_record_status(stt, 'Processing')
+
+            # Read file bytes
+            try:
+                with open(pdf_path, 'rb') as f:
+                    pdf_bytes = f.read()
+                pdf_file_object = BytesIO(pdf_bytes)
+                pdf_file_object.name = file_name
+
+                # Call OCR API
+                ocr_result = call_ocr_api(pdf_file_object, doc_type_code, doc_type_name)
+
+                # Save API data and update status
+                add_api_data(stt, ocr_result)
+                if ocr_result.get('status') == 'success':
+                    update_record_status(stt, 'Complete')
+                else:
+                    update_record_status(stt, 'Error')
+
+            except Exception as e:
+                # On unexpected error mark as Error and log
+                try:
+                    update_record_status(stt, 'Error')
+                    add_api_data(stt, {"status": "error", "message": str(e)})
+                except Exception:
+                    pass
+
+            # Small pause to avoid tight loop
+            time.sleep(poll_interval)
+
+    except Exception:
+        traceback.print_exc()
+    finally:
+        with BACKGROUND_WORKER_LOCK:
+            BACKGROUND_WORKER_RUNNING = False
+
+
+def start_background_worker():
+    """Start the background worker in a new daemon thread if not already running."""
+    global BACKGROUND_WORKER_RUNNING
+    with BACKGROUND_WORKER_LOCK:
+        if BACKGROUND_WORKER_RUNNING:
+            return
+        BACKGROUND_WORKER_RUNNING = True
+
+    t = threading.Thread(target=background_worker_loop, daemon=True)
+    t.start()
 
 @st.dialog("Thêm mới hồ sơ", width="small")
 def show_modal():
@@ -70,65 +250,67 @@ def show_modal():
         doc_type_name = ""
         selected_display = ""
 
-    uploaded_file = st.file_uploader(
-        "Chọn một tệp PDF để trích xuất thông tin", type="pdf"
+    uploaded_files = st.file_uploader(
+        "Chọn một hoặc nhiều tệp PDF để trích xuất thông tin", type="pdf", accept_multiple_files=True
     )
 
-    if uploaded_file is not None:
-        pdf_bytes = uploaded_file.getvalue()
-        pdf_file_object = BytesIO(pdf_bytes)
-        pdf_file_object.name = uploaded_file.name
-
+    if uploaded_files:
         if st.button("Bắt đầu trích xuất và Lưu"):
             # Kiểm tra đã chọn loại văn bản chưa
             if not doc_type_code:
                 st.error("Vui lòng chọn loại văn bản trước khi upload!")
                 return
-                
+
+            pdf_dir = "data/pdf"
             try:
-                # Tạo thư mục data/pdf nếu chưa tồn tại
-                import os
-                pdf_dir = "data/pdf"
                 if not os.path.exists(pdf_dir):
                     os.makedirs(pdf_dir)
-                
-                # Tạo tên file duy nhất để tránh trùng lặp
-                file_name = uploaded_file.name
-                base_name, ext = os.path.splitext(file_name)
-                counter = 1
-                while os.path.exists(os.path.join(pdf_dir, file_name)):
-                    file_name = f"{base_name}_{counter}{ext}"
-                    counter += 1
-                
-                # Lưu file PDF vào thư mục data/pdf
-                file_path = os.path.join(pdf_dir, file_name)
-                with open(file_path, "wb") as f:
-                    f.write(pdf_bytes)
-                
-                # Gọi OCR giả lập
-                ocr_result = call_ocr_api(pdf_file_object)
 
-                # Thêm hồ sơ mới vào CSV và session
-                new_stt = add_record(file_name, doc_type_code, doc_type_name, file_path)
-                
-                # Cập nhật session state
+                added = []
+                for uploaded_file in uploaded_files:
+                    try:
+                        pdf_bytes = uploaded_file.getvalue()
+                        # Tạo tên file duy nhất nếu trùng
+                        file_name = uploaded_file.name
+                        base_name, ext = os.path.splitext(file_name)
+                        counter = 1
+                        while os.path.exists(os.path.join(pdf_dir, file_name)):
+                            file_name = f"{base_name}_{counter}{ext}"
+                            counter += 1
+
+                        # Lưu file
+                        file_path = os.path.join(pdf_dir, file_name)
+                        with open(file_path, "wb") as f:
+                            f.write(pdf_bytes)
+
+                        # Thêm hồ sơ mới vào CSV với trạng thái Pending
+                        new_stt = add_record(file_name, doc_type_code, doc_type_name, file_path, status="Pending")
+
+                        # Thêm placeholder vào session ocr_results so UI can reference it
+                        st.session_state['ocr_results'][new_stt] = {
+                            "ocr_data": None,
+                            "pdf_bytes": base64.b64encode(pdf_bytes).decode('utf-8'),
+                            "doc_type": doc_type_name,
+                            "doc_type_code": doc_type_code,
+                            "file_name": file_name,
+                            "file_path": file_path
+                        }
+
+                        added.append(new_stt)
+                    except Exception as e:
+                        st.error(f"Lỗi khi lưu file {uploaded_file.name}: {e}")
+
+                # Refresh data shown in UI
                 st.session_state['data'] = load_records()
 
-                # Lưu kết quả OCR và thông tin file vào session (key: STT)
-                st.session_state['ocr_results'][new_stt] = {
-                    "ocr_data": ocr_result,
-                    "pdf_bytes": base64.b64encode(pdf_bytes).decode('utf-8'),
-                    "doc_type": doc_type_name,
-                    "doc_type_code": doc_type_code,
-                    "file_name": file_name,
-                    "file_path": file_path  # Lưu đường dẫn file vật lý
-                }
+                if added:
+                    st.success(f"Đã upload {len(added)} file. Chúng sẽ được xử lý tuần tự trong nền.")
+                    # Start background worker to process pending items
+                    start_background_worker()
+                    safe_rerun()
 
-                st.success(f"Đã thêm hồ sơ mới và xử lý OCR thành công! Loại văn bản: {doc_type_name} (Mã: {doc_type_code}) - File đã được lưu tại: {file_path}")
-                st.rerun()
-                
             except Exception as e:
-                st.error(f"Lỗi khi lưu file: {str(e)}")
+                st.error(f"Lỗi khi tạo thư mục lưu PDF: {e}")
 
     if st.button("Hủy"):
         pass
@@ -350,6 +532,62 @@ def load_records():
     else:
         return pd.DataFrame(columns=["STT", "Tên File", "THỜI GIAN TẢI LÊN", "TRẠNG THÁI DỮ LIỆU", "LOẠI HỒ SƠ", "MA_LOAI"])
 
+# Hàm load dữ liệu API từ CSV
+def load_api_data():
+    import os
+    csv_path = "data/records_api_data.csv"
+    if os.path.exists(csv_path):
+        try:
+            return pd.read_csv(csv_path)
+        except:
+            return pd.DataFrame(columns=["record_id", "api_response"])
+    else:
+        return pd.DataFrame(columns=["record_id", "api_response"])
+
+# Hàm lưu dữ liệu API vào CSV
+def save_api_data(df):
+    import os
+    data_dir = "data"
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+    
+    csv_path = os.path.join(data_dir, "records_api_data.csv")
+    df.to_csv(csv_path, index=False)
+
+# Hàm thêm kết quả API mới
+def add_api_data(record_id, api_response):
+    df = load_api_data()
+    
+    # Chuyển đổi API response thành JSON string để lưu trong CSV
+    api_response_json = json.dumps(api_response, ensure_ascii=False)
+    
+    # Kiểm tra xem record_id đã tồn tại chưa
+    if record_id in df['record_id'].values:
+        # Cập nhật dữ liệu cũ
+        df.loc[df['record_id'] == record_id, 'api_response'] = api_response_json
+    else:
+        # Thêm dòng mới
+        new_row = pd.DataFrame({
+            "record_id": [record_id],
+            "api_response": [api_response_json]
+        })
+        df = pd.concat([df, new_row], ignore_index=True)
+    
+    save_api_data(df)
+    return True
+
+# Hàm lấy dữ liệu API theo record_id
+def get_api_data(record_id):
+    df = load_api_data()
+    
+    if record_id in df['record_id'].values:
+        api_response_json = df.loc[df['record_id'] == record_id, 'api_response'].iloc[0]
+        try:
+            return json.loads(api_response_json)
+        except:
+            return None
+    return None
+
 # Hàm lưu danh sách hồ sơ vào CSV
 def save_records(df):
     import os
@@ -361,7 +599,7 @@ def save_records(df):
     df.to_csv(csv_path, index=False)
 
 # Hàm thêm hồ sơ mới
-def add_record(file_name, doc_type_code, doc_type_name, file_path):
+def add_record(file_name, doc_type_code, doc_type_name, file_path, status="Complete"):
     df = load_records()
     
     # Tạo STT mới
@@ -375,7 +613,7 @@ def add_record(file_name, doc_type_code, doc_type_name, file_path):
         "STT": [new_stt],
         "Tên File": [file_name],
         "THỜI GIAN TẢI LÊN": [time.strftime("%m/%d/%y %H:%M:%S")],
-        "TRẠNG THÁI DỮ LIỆU": ["Complete"],
+        "TRẠNG THÁI DỮ LIỆU": [status],
         "LOẠI HỒ SƠ": [doc_type_name],  # Hiển thị tên cho người dùng
         "MA_LOAI": [doc_type_code]      # Lưu mã để mapping
     })
@@ -385,12 +623,64 @@ def add_record(file_name, doc_type_code, doc_type_name, file_path):
     
     return new_stt
 
+# Hàm cập nhật trạng thái hồ sơ
+def update_record_status(stt, new_status):
+    df = load_records()
+    
+    # Tìm và cập nhật dòng có STT tương ứng
+    mask = df['STT'] == stt
+    if mask.any():
+        df.loc[mask, 'TRẠNG THÁI DỮ LIỆU'] = new_status
+        save_records(df)
+        return True
+    return False
+
 # Khởi tạo session state
 if 'data' not in st.session_state:
     st.session_state['data'] = load_records()
 
 if 'ocr_results' not in st.session_state:
     st.session_state['ocr_results'] = {}
+
+# Load lại dữ liệu API từ CSV vào session state
+def sync_api_data_to_session():
+    """Đồng bộ dữ liệu API từ CSV vào session state"""
+    api_df = load_api_data()
+    
+    for _, row in api_df.iterrows():
+        record_id = row['record_id']
+        try:
+            api_data = json.loads(row['api_response'])
+            
+            # Kiểm tra xem record_id có tồn tại trong records.csv không
+            records_df = load_records()
+            record_exists = record_id in records_df['STT'].values
+            
+            if record_exists and record_id not in st.session_state['ocr_results']:
+                # Lấy thông tin từ records.csv
+                record_info = records_df[records_df['STT'] == record_id].iloc[0]
+                
+                st.session_state['ocr_results'][record_id] = {
+                    "ocr_data": api_data,
+                    "pdf_bytes": "",  # Sẽ được load khi cần
+                    "doc_type": record_info['LOẠI HỒ SƠ'],
+                    "doc_type_code": record_info['MA_LOAI'],
+                    "file_name": record_info['Tên File'],
+                    "file_path": f"data/pdf/{record_info['Tên File']}"
+                }
+        except:
+            continue
+
+# Đồng bộ dữ liệu khi khởi tạo
+sync_api_data_to_session()
+
+# Start background worker if there are Pending items
+try:
+    records_start = load_records()
+    if not records_start[records_start['TRẠNG THÁI DỮ LIỆU'] == 'Pending'].empty:
+        start_background_worker()
+except Exception:
+    pass
 
 
 # Main content chỉ hiển thị khi ở mục "Số hóa tài liệu"
@@ -406,6 +696,8 @@ if st.session_state.get('main_menu', 'Số hóa tài liệu') == "Số hóa tài
 
     # Load dữ liệu từ CSV mỗi lần
     records_df = load_records()
+
+    # notifications feature removed
     
     # Filter data based on search query
     filtered_data = records_df
@@ -452,6 +744,10 @@ if st.session_state.get('main_menu', 'Số hóa tài liệu') == "Số hóa tài
                 # Hiển thị trạng thái với màu sắc
                 if row['TRẠNG THÁI DỮ LIỆU'] == "Complete":
                     st.success("✅ Complete")
+                elif row['TRẠNG THÁI DỮ LIỆU'] == "Pending":
+                    st.warning("⏳ Pending")
+                elif row['TRẠNG THÁI DỮ LIỆU'] == "Error":
+                    st.error("❌ Error")
                 else:
                     st.warning("⏳ Processing")
             with col6:
