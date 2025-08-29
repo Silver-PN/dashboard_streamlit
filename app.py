@@ -91,7 +91,7 @@ def call_ocr_api(pdf_file, doc_type_code, doc_type_name=None):
         data = {
             'schema': json.dumps(schema),
             'strategy': 'vision_llm',
-            'use_embedding': 'true'
+            'use_embedding': 'false'
         }
         
         # Gọi API
