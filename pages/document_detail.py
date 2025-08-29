@@ -16,14 +16,16 @@ st.set_page_config(layout="wide", page_title="Thông tin tài liệu")
 def safe_rerun():
     """Safe rerun helper for Streamlit pages: use experimental_rerun if available, else stop."""
     try:
+        # Prefer the stable API when available
+        if hasattr(st, 'rerun'):
+            st.rerun()
+            return
+        # Fallback for older Streamlit versions
         if hasattr(st, 'experimental_rerun'):
             st.experimental_rerun()
             return
-        try:
-            from streamlit.runtime.scriptrunner import RerunException
-            raise RerunException
-        except Exception:
-            st.stop()
+        # Last resort: stop the script to allow a clean re-run on next interaction
+        st.stop()
     except Exception:
         st.stop()
 
@@ -864,50 +866,7 @@ def create_highlighted_pdf(pdf_bytes, field_code, document_type_code=None):
 # Giao diện chính
 st.markdown(f"<h3>Thông tin tài liệu - ID: {document_id}</h3>", unsafe_allow_html=True)
 
-# Debug panel (có thể ẩn/hiện)
-with st.expander("🐛 Debug Panel - PDF & Bbox Info"):
-    col_debug1, col_debug2 = st.columns(2)
-    
-    with col_debug1:
-        st.markdown("**📄 PDF Information:**")
-        try:
-            if os.path.exists(pdf_file_path):
-                with open(pdf_file_path, "rb") as pdf_file:
-                    pdf_bytes = pdf_file.read()
-                
-                doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-                if len(doc) > 0:
-                    page = doc[0]
-                    rect = page.rect
-                    st.write(f"• **Pages:** {len(doc)}")
-                    st.write(f"• **Width:** {rect.width:.1f}px")
-                    st.write(f"• **Height:** {rect.height:.1f}px")
-                    st.write(f"• **Bounds:** ({rect.x0:.1f}, {rect.y0:.1f}) to ({rect.x1:.1f}, {rect.y1:.1f})")
-                doc.close()
-        except Exception as e:
-            st.error(f"Error reading PDF: {str(e)}")
-    
-    with col_debug2:
-        st.markdown("**📍 Available Bbox Fields:**")
-        if api_data:
-            extraction_results = api_data.get('data', {}).get('extraction_results', {})
-            bbox_fields = []
-            
-            for field_name, field_data in extraction_results.items():
-                if isinstance(field_data, dict):
-                    bbox_list = field_data.get('bbox', [])
-                    if bbox_list and isinstance(bbox_list, list) and len(bbox_list) > 0:
-                        bbox_fields.append(f"• **{field_name}:** {len(bbox_list)} vùng")
-            
-            if bbox_fields:
-                for field_info in bbox_fields[:10]:  # Chỉ hiển thị 10 field đầu
-                    st.write(field_info)
-                if len(bbox_fields) > 10:
-                    st.write(f"... và {len(bbox_fields) - 10} field khác")
-            else:
-                st.write("Không có field nào có bbox data")
-        else:
-            st.write("Không có API data")
+ 
 
 # State để theo dõi field đang được hover
 if 'highlighted_field' not in st.session_state:
@@ -1321,48 +1280,44 @@ with col_right:
                     field_code = st.session_state.highlighted_field
                     positions = get_field_position(field_code, ma_loai_van_ban)
                     
-                    st.markdown(f"**🎯 Đang hiển thị vị trí của field:** `{field_code}`")
+                    # st.markdown(f"**🎯 Đang hiển thị vị trí của field:** `{field_code}`")
                     
-                    # Hiển thị số lượng bbox
-                    if positions:
-                        st.markdown(f"**📍 Số vùng được đánh dấu:** {len(positions)}")
+                    # # Hiển thị số lượng bbox
+                    # if positions:
+                    #     st.markdown(f"**📍 Số vùng được đánh dấu:** {len(positions)}")
                         
-                        # Hiển thị tọa độ nếu từ API
-                        api_positions = get_field_positions_from_api(field_code)
-                        if api_positions:
-                            st.success("✅ Sử dụng vị trí từ dữ liệu OCR")
-                        else:
-                            st.info("ℹ️ Sử dụng vị trí mặc định (không có dữ liệu OCR)")
+                    #     # Hiển thị tọa độ nếu từ API
+                    #     api_positions = get_field_positions_from_api(field_code)
                         
-                        # Hiển thị thông tin chi tiết các bbox
-                        with st.expander("📍 Chi tiết vị trí các vùng"):
-                            for i, pos in enumerate(positions):
-                                st.markdown(f"**Vùng {i+1}:**")
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    st.write(f"• **Left:** {pos['left']:.1f}")
-                                    st.write(f"• **Width:** {pos['width']:.1f}")
-                                with col2:
-                                    st.write(f"• **Top:** {pos['top']:.1f}")
-                                    st.write(f"• **Height:** {pos['height']:.1f}")
+                    #     # Hiển thị thông tin chi tiết các bbox
+                    #     with st.expander("📍 Chi tiết vị trí các vùng"):
+                    #         for i, pos in enumerate(positions):
+                    #             st.markdown(f"**Vùng {i+1}:**")
+                    #             col1, col2 = st.columns(2)
+                    #             with col1:
+                    #                 st.write(f"• **Left:** {pos['left']:.1f}")
+                    #                 st.write(f"• **Width:** {pos['width']:.1f}")
+                    #             with col2:
+                    #                 st.write(f"• **Top:** {pos['top']:.1f}")
+                    #                 st.write(f"• **Height:** {pos['height']:.1f}")
                                 
-                                # Tính toán right và bottom
-                                right = pos['left'] + pos['width']
-                                bottom = pos['top'] + pos['height']
-                                st.write(f"• **Right:** {right:.1f} | **Bottom:** {bottom:.1f}")
+                    #             # Tính toán right và bottom
+                    #             right = pos['left'] + pos['width']
+                    #             bottom = pos['top'] + pos['height']
+                    #             st.write(f"• **Right:** {right:.1f} | **Bottom:** {bottom:.1f}")
                                 
-                                if i < len(positions) - 1:
-                                    st.markdown("---")
+                    #             if i < len(positions) - 1:
+                    #                 st.markdown("---")
                     
                     col_clear, col_debug = st.columns([1, 1])
                     with col_clear:
-                        if st.button("❌ Xóa highlight", key="clear_highlight"):
+                        if st.button("Xóa highlight", key="clear_highlight"):
                             st.session_state.highlighted_field = None
                             st.rerun()
                     
                     with col_debug:
                         # Nút để copy coordinates để debug
-                        if st.button("📋 Copy coordinates", key="copy_coords"):
+                        if st.button("Copy coordinates", key="copy_coords"):
                             if positions:
                                 coords_text = f"Field: {field_code}\n"
                                 for i, pos in enumerate(positions):

@@ -15,7 +15,14 @@ def load_information_fields():
     csv_path = "data/information_fields.csv"
     if os.path.exists(csv_path):
         try:
-            return pd.read_csv(csv_path)
+            df = pd.read_csv(csv_path)
+            # Ensure backward compatibility: if 'mota' (description) column is missing, derive from 'ten'
+            if 'mota' not in df.columns:
+                try:
+                    df['mota'] = df['ten'] if 'ten' in df.columns else ""
+                except Exception:
+                    df['mota'] = ""
+            return df
         except:
             return pd.DataFrame()
     return pd.DataFrame()
@@ -41,8 +48,18 @@ def create_schema_from_fields(doc_type_code, doc_type_name=None):
     
     for _, field in filtered_fields.iterrows():
         field_name = field['ma']
-        field_description = field['ten']
-        
+        # Use 'mota' (mô tả) as the description if available; fallback to 'ten' for compatibility
+        field_description = None
+        try:
+            field_description = field.get('mota') if hasattr(field, 'get') else field['mota']
+        except Exception:
+            pass
+        if not field_description or (isinstance(field_description, float) and pd.isna(field_description)):
+            try:
+                field_description = field['ten']
+            except Exception:
+                field_description = ""
+
         schema["properties"][field_name] = {
             "type": "string",
             "description": field_description
@@ -52,23 +69,23 @@ def create_schema_from_fields(doc_type_code, doc_type_name=None):
 
 
 def safe_rerun():
-    """Call Streamlit rerun if available, otherwise stop the script to allow refresh.
-    This avoids AttributeError on Streamlit versions that don't expose experimental_rerun.
+    """Force a reliable rerun across Streamlit versions.
+    Tries st.rerun() first, then experimental_rerun, then raises RerunException properly.
     """
+    # Preferred API in newer Streamlit
+    if hasattr(st, 'rerun'):
+        st.rerun()
+        return
+    # Back-compat API
+    if hasattr(st, 'experimental_rerun'):
+        st.experimental_rerun()
+        return
+    # Lowest-level fallback: raise RerunException with RerunData
     try:
-        # Preferred (older/newer Streamlit may have this exposed)
-        if hasattr(st, 'experimental_rerun'):
-            st.experimental_rerun()
-            return
-        # Newer Streamlit may provide runtime script runner (best-effort)
-        try:
-            from streamlit.runtime.scriptrunner import RerunException
-            raise RerunException
-        except Exception:
-            # Fallback: stop current execution; user can refresh manually
-            st.stop()
+        from streamlit.runtime.scriptrunner import RerunException, RerunData
+        raise RerunException(RerunData(widget_states=None))
     except Exception:
-        # Final fallback
+        # Last resort: stop; user can manually refresh
         st.stop()
 
 def call_ocr_api(pdf_file, doc_type_code, doc_type_name=None):
@@ -91,7 +108,7 @@ def call_ocr_api(pdf_file, doc_type_code, doc_type_name=None):
         data = {
             'schema': json.dumps(schema),
             'strategy': 'vision_llm',
-            'use_embedding': 'false'
+            'use_embedding': 'true'
         }
         
         # Gọi API
@@ -383,12 +400,12 @@ st.markdown(
         font-size: 0.875rem !important;
     }
     
-    /* Căn giữa nút View theo chiều cao */
+    /* Căn giữa nút View theo chiều cao nhưng không kéo giãn toàn hàng */
     .stButton > button[data-testid="baseButton-secondary"] {
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
-        height: 100% !important;
+        height: auto !important;
     }
     
     /* Màu xanh nhạt cho nút Upload */
@@ -526,11 +543,15 @@ def load_records():
     csv_path = "data/records.csv"
     if os.path.exists(csv_path):
         try:
-            return pd.read_csv(csv_path)
+            df = pd.read_csv(csv_path)
+            # Ensure 'isrequest' column exists (0: hidden, 1: show Request)
+            if 'isrequest' not in df.columns:
+                df['isrequest'] = 0
+            return df
         except:
-            return pd.DataFrame(columns=["STT", "Tên File", "THỜI GIAN TẢI LÊN", "TRẠNG THÁI DỮ LIỆU", "LOẠI HỒ SƠ", "MA_LOAI"])
+            return pd.DataFrame(columns=["STT", "Tên File", "THỜI GIAN TẢI LÊN", "TRẠNG THÁI DỮ LIỆU", "LOẠI HỒ SƠ", "MA_LOAI", "isrequest"])
     else:
-        return pd.DataFrame(columns=["STT", "Tên File", "THỜI GIAN TẢI LÊN", "TRẠNG THÁI DỮ LIỆU", "LOẠI HỒ SƠ", "MA_LOAI"])
+        return pd.DataFrame(columns=["STT", "Tên File", "THỜI GIAN TẢI LÊN", "TRẠNG THÁI DỮ LIỆU", "LOẠI HỒ SƠ", "MA_LOAI", "isrequest"])
 
 # Hàm load dữ liệu API từ CSV
 def load_api_data():
@@ -615,7 +636,8 @@ def add_record(file_name, doc_type_code, doc_type_name, file_path, status="Compl
         "THỜI GIAN TẢI LÊN": [time.strftime("%m/%d/%y %H:%M:%S")],
         "TRẠNG THÁI DỮ LIỆU": [status],
         "LOẠI HỒ SƠ": [doc_type_name],  # Hiển thị tên cho người dùng
-        "MA_LOAI": [doc_type_code]      # Lưu mã để mapping
+        "MA_LOAI": [doc_type_code],      # Lưu mã để mapping
+        "isrequest": [0]                 # 0: không hiển thị Request, 1: hiển thị
     })
     
     df = pd.concat([df, new_row], ignore_index=True)
@@ -631,6 +653,16 @@ def update_record_status(stt, new_status):
     mask = df['STT'] == stt
     if mask.any():
         df.loc[mask, 'TRẠNG THÁI DỮ LIỆU'] = new_status
+        save_records(df)
+        return True
+    return False
+
+# Hàm cập nhật cờ isrequest cho một hồ sơ
+def update_record_isrequest(stt, flag):
+    df = load_records()
+    mask = df['STT'] == stt
+    if mask.any():
+        df.loc[mask, 'isrequest'] = int(1 if flag else 0)
         save_records(df)
         return True
     return False
@@ -780,7 +812,7 @@ if st.session_state.get('main_menu', 'Số hóa tài liệu') == "Số hóa tài
     st.markdown("<h3>Danh sách hồ sơ</h3>", unsafe_allow_html=True)
 
     # Table header
-    hdr_col1, hdr_col2, hdr_col3, hdr_col4, hdr_col5, hdr_col6 = st.columns([0.5, 2.5, 1, 2, 1.5, 1])
+    hdr_col1, hdr_col2, hdr_col3, hdr_col4, hdr_col5, hdr_col6 = st.columns([0.5, 3, 1, 1, 1.5, 1.5])
     with hdr_col1:
         st.markdown("**STT**")
     with hdr_col2:
@@ -798,8 +830,10 @@ if st.session_state.get('main_menu', 'Số hóa tài liệu') == "Số hóa tài
 
     # Table data (paginated)
     if not page_data.empty:
-        for index, row in page_data.iterrows():
-            col1, col2, col3, col4, col5, col6 = st.columns([0.5, 2.5, 1, 2, 1.5, 1])
+        # Reset index so row indices are 0..n-1 within the current page
+        page_rows = page_data.reset_index(drop=True)
+        for i, row in page_rows.iterrows():
+            col1, col2, col3, col4, col5, col6 = st.columns([0.5, 3, 1, 1, 1.5, 1.5])
             with col1:
                 st.write(f"**{row['STT']}**")
             with col2:
@@ -819,16 +853,45 @@ if st.session_state.get('main_menu', 'Số hóa tài liệu') == "Số hóa tài
                 else:
                     st.warning("⏳ Processing")
             with col6:
-                if st.button("View", key=f"view_{row['STT']}", type="secondary"):
-                    st.session_state['selected_id'] = row['STT']
-                    # Cập nhật URL với ID để hỗ trợ F5 refresh
+                # Bố trí hai nút cùng một hàng trong cột Thao tác
+                bcol1, bcol2 = st.columns([1, 1])
+                with bcol1:
+                    # Chỉ hiển thị nút Request khi isrequest = 1 và không Pending/Processing
                     try:
-                        st.query_params['id'] = str(row['STT'])
-                    except:
-                        pass
-                    st.switch_page("pages/document_detail.py")
+                        isreq = int(row.get('isrequest', 0))
+                    except Exception:
+                        isreq = 0
+                    state = str(row['TRẠNG THÁI DỮ LIỆU'])
+                    can_request = (isreq == 1) and (state not in ["Pending", "Processing"])
+                    if can_request:
+                        if st.button("Request", key=f"request_{row['STT']}"):
+                            try:
+                                stt = int(row['STT'])
+                                file_name = str(row['Tên File'])
+                                pdf_path = os.path.join('data', 'pdf', file_name)
+                                if not os.path.exists(pdf_path):
+                                    st.error(f"Không tìm thấy file PDF đã lưu: {pdf_path}")
+                                else:
+                                    # Đánh dấu hồ sơ cần xử lý và reset cờ yêu cầu (đã request)
+                                    update_record_status(stt, 'Pending')
+                                    update_record_isrequest(stt, 0)
+                                    start_background_worker()
+                                    safe_rerun()
+                            except Exception as _e:
+                                st.error(f"Không thể gửi lại request cho hồ sơ {row['STT']}: {_e}")
+                    else:
+                        st.write("")
+                with bcol2:
+                    if st.button("View", key=f"view_{row['STT']}", type="secondary"):
+                        st.session_state['selected_id'] = row['STT']
+                        try:
+                            st.query_params['id'] = str(row['STT'])
+                        except:
+                            pass
+                        st.switch_page("pages/document_detail.py")
             
-            if index < len(filtered_data) - 1:  # Không hiển thị divider cho dòng cuối
+            # Hiển thị divider giữa các dòng trong trang hiện tại (ẩn cho dòng cuối của trang)
+            if i < len(page_rows) - 1:
                 st.divider()
         
         # Pagination controls and info
