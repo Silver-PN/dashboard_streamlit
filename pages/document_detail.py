@@ -737,6 +737,91 @@ def get_field_positions_from_api(field_name):
 # Load vị trí các field
 FIELD_POSITIONS = load_field_positions()
 
+# Chuyển bbox ảnh OCR (px, gốc top-left) sang tọa độ trang PDF (pt), có xét rotation
+def _transform_bbox_from_api_to_page(pos: dict, page, api_dims: dict):
+    """
+    pos: {left, top, width, height, [page]}
+    api_dims: {width(px), height(px), dpi}
+    Trả về (left, top, width, height) theo đơn vị point của trang PDF đã xét rotation.
+    """
+    # Nguồn từ API (pixel)
+    try:
+        src_w = float(api_dims.get('width', 0))
+        src_h = float(api_dims.get('height', 0))
+        if src_w <= 0 or src_h <= 0:
+            # Fallback: dùng kích thước trang làm nguồn để không chia 0
+            b = page.bound()
+            src_w = float(b.width)
+            src_h = float(b.height)
+    except Exception:
+        b = page.bound()
+        src_w = float(b.width)
+        src_h = float(b.height)
+
+    # Bbox từ API (pixel)
+    x = float(pos.get('left', 0.0))
+    y = float(pos.get('top', 0.0))
+    w = float(pos.get('width', 0.0))
+    h = float(pos.get('height', 0.0))
+
+    # Chuẩn hóa về [0,1]
+    nx = x / src_w
+    ny = y / src_h
+    nw = w / src_w
+    nh = h / src_h
+
+    # Thông tin trang PDF (đã xét crop và rotation)
+    page_rect = page.bound()  # an toàn với cropbox / rotation
+    pdf_w = float(page_rect.width)
+    pdf_h = float(page_rect.height)
+    rot = int(getattr(page, 'rotation', 0)) % 360
+
+    # Biến đổi theo rotation (quy ước xoay thuận chiều kim đồng hồ)
+    if rot == 0:
+        tx, ty, tw, th = nx, ny, nw, nh
+    elif rot == 90:
+        # x' = y, y' = 1 - (x + w)
+        tx = ny
+        ty = 1.0 - (nx + nw)
+        tw = nh
+        th = nw
+    elif rot == 180:
+        # x' = 1 - (x + w), y' = 1 - (y + h)
+        tx = 1.0 - (nx + nw)
+        ty = 1.0 - (ny + nh)
+        tw = nw
+        th = nh
+    elif rot == 270:
+        # x' = 1 - (y + h), y' = x
+        tx = 1.0 - (ny + nh)
+        ty = nx
+        tw = nh
+        th = nw
+    else:
+        tx, ty, tw, th = nx, ny, nw, nh
+
+    # Đưa về point
+    left = tx * pdf_w
+    top = ty * pdf_h
+    width = tw * pdf_w
+    height = th * pdf_h
+
+    # Clamp để tránh vượt trang (phòng lỗi hiếm)
+    if width < 0:
+        width = -width
+        left = left - width
+    if height < 0:
+        height = -height
+        top = top - height
+    left = max(0.0, min(left, pdf_w))
+    top = max(0.0, min(top, pdf_h))
+    if left + width > pdf_w:
+        width = max(0.0, pdf_w - left)
+    if top + height > pdf_h:
+        height = max(0.0, pdf_h - top)
+
+    return left, top, width, height
+
 # Hàm lấy vị trí field theo mã field và loại văn bản
 def get_field_position(field_code, document_type_code=None):
     """Lấy vị trí {left, top, width, height} của field trong PDF"""
@@ -786,51 +871,23 @@ def create_highlighted_pdf(pdf_bytes, field_code, document_type_code=None):
 
                 page = doc[page_index]
 
-                # Lấy kích thước trang thực tế (fitz)
-                page_rect = page.rect
-                pdf_page_width = page_rect.width
-                pdf_page_height = page_rect.height
-
-                # Nếu API cung cấp kích thước nguồn, scale từ API coords -> PDF coords
+                # Thông tin kích thước ảnh từ API (cho trang tương ứng)
                 if api_page_dims and str(page_index+1) in api_page_dims:
-                    try:
-                        src = api_page_dims[str(page_index+1)]
-                        src_w = float(src.get('width', pdf_page_width))
-                        src_h = float(src.get('height', pdf_page_height))
-                        src_dpi = float(src.get('dpi', 72))
-
-                        # Convert API pixels -> PDF points (1 point = 1/72 inch)
-                        px_to_pt = 72.0 / src_dpi if src_dpi else 1.0
-
-                        left_pt = pos["left"] * px_to_pt
-                        top_pt = pos["top"] * px_to_pt
-                        width_pt = pos["width"] * px_to_pt
-                        height_pt = pos["height"] * px_to_pt
-
-                        # Source page dims in points
-                        src_w_pt = src_w * px_to_pt
-                        src_h_pt = src_h * px_to_pt
-
-                        # Scale between PDF page points and source points
-                        scale_x = pdf_page_width / src_w_pt if src_w_pt else 1.0
-                        scale_y = pdf_page_height / src_h_pt if src_h_pt else 1.0
-
-                        left = left_pt * scale_x
-                        top = top_pt * scale_y
-                        width = width_pt * scale_x
-                        height = height_pt * scale_y
-                    except Exception:
-                        # Nếu lỗi khi scale, fallback giữ nguyên giá trị không scale
-                        left = pos["left"]
-                        top = pos["top"]
-                        width = pos["width"]
-                        height = pos["height"]
+                    src_dims = api_page_dims[str(page_index+1)]
                 else:
-                    # Không có thông tin kích thước nguồn -> dùng nguyên giá trị từ API
-                    left = pos["left"]
-                    top = pos["top"]
-                    width = pos["width"]
-                    height = pos["height"]
+                    # Fallback: dùng kích thước trang PDF làm nguồn (giảm lỗi nếu thiếu page_dimensions)
+                    b = page.bound()
+                    src_dims = {"width": b.width, "height": b.height, "dpi": 150}
+
+                # Tính toạ độ theo rotation-aware transform
+                try:
+                    left, top, width, height = _transform_bbox_from_api_to_page(pos, page, src_dims)
+                except Exception:
+                    # Fallback an toàn
+                    left = float(pos.get("left", 0.0))
+                    top = float(pos.get("top", 0.0))
+                    width = float(pos.get("width", 0.0))
+                    height = float(pos.get("height", 0.0))
 
                 x1 = left
                 y1 = top
